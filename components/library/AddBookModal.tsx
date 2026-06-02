@@ -5,7 +5,7 @@ import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
 import type { Category } from '@/types';
 
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/raw/upload`;
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`;
 
 interface AddBookData {
   title: string;

@@ -12,11 +12,9 @@ interface BookCardProps {
 }
 
 function getCoverUrl(pdfUrl: string | null): string | null {
-  if (!pdfUrl || !pdfUrl.includes('cloudinary.com')) return null;
-  // Derive a first-page thumbnail from the raw PDF URL
-  return pdfUrl
-    .replace('/raw/upload/', '/image/upload/pg_1,w_480,h_640,c_fill,f_auto,q_auto/')
-    .replace(/\.pdf$/i, '.jpg');
+  if (!pdfUrl || !pdfUrl.includes('/image/upload/')) return null;
+  // Insert page-1 thumbnail transformation into the existing image URL
+  return pdfUrl.replace('/image/upload/', '/image/upload/pg_1,w_480,h_640,c_fill,f_auto,q_auto/');
 }
 
 export default function BookCard({ book, onDelete }: BookCardProps) {

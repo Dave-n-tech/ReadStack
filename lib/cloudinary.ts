@@ -26,7 +26,7 @@ export function generateUploadSignature(userId: string): UploadSignature {
 }
 
 export async function deleteFile(publicId: string): Promise<void> {
-  await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+  await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
 }
 
 export default cloudinary;
