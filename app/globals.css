@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background-color: #0C0E13;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary font-sans antialiased;
+    min-height: 100dvh;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  /* Focus ring */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-gold ring-offset-2 ring-offset-bg-primary rounded;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-accent-gold text-bg-primary font-sans font-medium text-sm px-4 py-2 rounded-lg
+           transition-opacity duration-150 hover:opacity-85 active:opacity-70
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-text-secondary text-sm px-4 py-2 rounded-lg border border-border
+           transition-colors duration-150 hover:text-text-primary hover:border-border-light
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply bg-accent-red-muted text-accent-red text-sm px-4 py-2 rounded-lg border border-accent-red/20
+           transition-colors duration-150 hover:bg-accent-red/25
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply bg-bg-card border border-border rounded-xl;
+  }
+
+  .input {
+    @apply w-full bg-bg-primary border border-border rounded-lg px-3 py-2
+           text-sm text-text-primary placeholder-text-muted
+           focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/30
+           transition-colors duration-150;
+  }
+
+  .label {
+    @apply block text-xs text-text-secondary uppercase tracking-wider font-mono mb-1.5;
+  }
+}
