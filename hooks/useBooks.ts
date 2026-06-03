@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { evictCachedPDF } from '@/lib/cache/pdf-cache';
-import type { Book } from '@/types';
+import type { Book, CreateBookInput } from '@/types';
 
 export function useBooks() {
   const [books, setBooks] = useState<Book[]>([]);
@@ -26,7 +26,7 @@ export function useBooks() {
     }
   }
 
-  async function createBook(data: Record<string, unknown>): Promise<Book> {
+  async function createBook(data: CreateBookInput): Promise<Book> {
     const res = await fetch('/api/books', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

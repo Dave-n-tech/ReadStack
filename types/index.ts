@@ -47,6 +47,15 @@ export interface CachedPDF {
   cachedAt: number;
 }
 
+export interface CreateBookInput {
+  title: string;
+  author: string | null;
+  categoryId: string | null;
+  cloudinaryPublicId: string | null;
+  pdfUrl: string | null;
+  totalPages: number | null;
+}
+
 export interface UploadSignature {
   signature: string;
   timestamp: number;
