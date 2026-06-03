@@ -2,3 +2,7 @@ node_modules
 .next
 dist
 .env.local
+.env*.local
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+public/pdf.worker.min.mjs

@@ -154,7 +154,7 @@ export default function BookCard({ book, onDelete }: BookCardProps) {
       <div className="absolute top-2 right-2">
         <button
           onClick={(e) => { e.preventDefault(); setShowMenu(!showMenu); }}
-          className="w-6 h-6 rounded bg-bg-card/80 border border-border text-text-muted hover:text-text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+          className="w-7 h-7 rounded bg-bg-card/80 border border-border text-text-muted hover:text-text-primary flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-xs"
         >
           ⋯
         </button>

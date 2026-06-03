@@ -18,91 +18,69 @@ type PDFPageProxy = {
   }) => { promise: Promise<void>; cancel: () => void };
 };
 
+const SCROLL_WINDOW = 3;
+
 export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const pdfRef       = useRef<PDFDocumentProxy | null>(null);
-  const renderTask   = useRef<{ cancel(): void } | null>(null);
-
-  // Scroll mode
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const scrollAreaRef  = useRef<HTMLDivElement>(null);
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const pdfRef         = useRef<PDFDocumentProxy | null>(null);
+  const renderTask     = useRef<{ cancel(): void } | null>(null);
   const pageCanvasRefs = useRef<(HTMLCanvasElement | null)[]>([]);
-  const observerRef    = useRef<IntersectionObserver | null>(null);
-  const visiblePages   = useRef<Set<number>>(new Set());
   const renderedAt     = useRef<Map<number, number>>(new Map());
-
-  // Refs so native event handlers always read current values without stale closures
-  const scaleRef       = useRef(1.2);
-  const viewModeRef    = useRef<ViewMode>('page');
-
-  // Smooth zoom: visual scale applied via CSS transform while real re-render is debounced
-  const lastRenderScale = useRef(1.2);  // scale at which canvas was last drawn
+  const saveTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scaleRef        = useRef(1.2);
+  const viewModeRef     = useRef<ViewMode>('scroll');
+  const totalPagesRef   = useRef(0);
+  const currentPageRef  = useRef(book.current_page ?? 1);
+  const lastRenderScale = useRef(1.2);
   const zoomTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [currentPage,  setCurrentPage]  = useState(book.current_page ?? 1);
   const [totalPages,   setTotalPages]   = useState(book.total_pages ?? 0);
   const [scale,        setScale]        = useState(1.2);
-  const [cssScale,     setCssScale]     = useState(1);   // canvas CSS transform ratio
-  const [viewMode,     setViewMode]     = useState<ViewMode>('page');
+  const [cssScale,     setCssScale]     = useState(1);
+  const [viewMode,     setViewMode]     = useState<ViewMode>('scroll');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading,      setLoading]      = useState(true);
   const [pageLoading,  setPageLoading]  = useState(false);
   const [error,        setError]        = useState<string | null>(null);
   const [loadSource,   setLoadSource]   = useState<'cache' | 'network' | null>(null);
+  const [pageSize,     setPageSize]     = useState({ w: 816, h: 1056 });
 
-  // Keep refs in sync with state
-  useEffect(() => { scaleRef.current    = scale;    }, [scale]);
-  useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+  useEffect(() => { scaleRef.current       = scale;       }, [scale]);
+  useEffect(() => { viewModeRef.current    = viewMode;    }, [viewMode]);
+  useEffect(() => { totalPagesRef.current  = totalPages;  }, [totalPages]);
+  useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
 
-  // ── Smooth gesture zoom ──────────────────────────────────────────────────────
-  // Called on every wheel/pinch event — gives instant CSS feedback, debounces re-render.
+  // ── Gesture zoom ─────────────────────────────────────────────────────────────
   const gestureZoom = useCallback((targetScale: number) => {
     const next = Math.max(0.5, Math.min(4, targetScale));
     scaleRef.current = next;
-
-    // Immediate visual feedback via CSS transform (no re-render)
     setCssScale(next / lastRenderScale.current);
-
-    // Debounce the actual PDF re-render until the gesture pauses
     if (zoomTimer.current) clearTimeout(zoomTimer.current);
-    zoomTimer.current = setTimeout(() => {
-      setScale(scaleRef.current);
-      // cssScale resets after re-render completes:
-      //   page mode  → inside renderSinglePage
-      //   scroll mode → inside useEffect([scale]) after Promise.all
-    }, 180);
+    zoomTimer.current = setTimeout(() => setScale(scaleRef.current), 180);
   }, []);
 
-  // ── Native touch + wheel listeners (passive:false required for preventDefault) ─
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-
-    let startDist  = 0;
-    let startScale = 1.2;
-
+    let startDist = 0, startScale = 1.2;
     const dist = (t: TouchList) =>
       Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
-
     const onStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        e.preventDefault();
-        startDist  = dist(e.touches);
-        startScale = scaleRef.current;
-      }
+      if (e.touches.length === 2) { e.preventDefault(); startDist = dist(e.touches); startScale = scaleRef.current; }
     };
-
     const onMove = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
       e.preventDefault();
       gestureZoom(startScale * (dist(e.touches) / startDist));
     };
-
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
       gestureZoom(scaleRef.current * (e.deltaY < 0 ? 1.08 : 0.92));
     };
-
     el.addEventListener('touchstart', onStart, { passive: false });
     el.addEventListener('touchmove',  onMove,  { passive: false });
     el.addEventListener('wheel',      onWheel, { passive: false });
@@ -113,10 +91,41 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
     };
   }, [gestureZoom]);
 
-  // ── Load PDF ─────────────────────────────────────────────────────────────────
+  // ── Stable scroll-mode render functions ──────────────────────────────────────
+  const renderScrollPage = useCallback(async (
+    pageNum: number,
+    canvas: HTMLCanvasElement,
+    s: number,
+  ) => {
+    if (!pdfRef.current) return;
+    try {
+      const page = await pdfRef.current.getPage(pageNum);
+      const vp = page.getViewport({ scale: s });
+      canvas.width  = vp.width;
+      canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
+    } catch { /* cancelled or unavailable — canvas keeps placeholder dimensions */ }
+  }, []);
+
+  const renderScrollWindow = useCallback((centerPage: number, s: number) => {
+    const total = totalPagesRef.current;
+    if (total === 0 || !pdfRef.current) return;
+    const start = Math.max(1, centerPage - SCROLL_WINDOW);
+    const end   = Math.min(total, centerPage + SCROLL_WINDOW);
+    for (let i = start; i <= end; i++) {
+      const canvas = pageCanvasRefs.current[i - 1];
+      if (canvas && renderedAt.current.get(i) !== s) {
+        renderedAt.current.set(i, s);
+        renderScrollPage(i, canvas, s);
+      }
+    }
+  }, [renderScrollPage]);
+
+  // ── Load PDF ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     loadPDF();
     return () => { renderTask.current?.cancel(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadPDF() {
@@ -124,26 +133,35 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
       setLoading(true);
       const pdfjs = await import('pdfjs-dist');
       pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-
       let data: ArrayBuffer;
+      let source: 'cache' | 'network';
       const cached = await getCachedPDF(book.id);
       if (cached) {
         data = cached.arrayBuffer;
+        source = 'cache';
         setLoadSource('cache');
       } else {
         if (!book.pdf_url) throw new Error('No PDF available');
-        setLoadSource('network');
         const res = await fetch(book.pdf_url);
         if (!res.ok) throw new Error('Failed to load PDF');
         data = await res.arrayBuffer();
+        source = 'network';
+        setLoadSource('network');
       }
-
       const pdf = await pdfjs.getDocument({ data }).promise;
       pdfRef.current = pdf as unknown as PDFDocumentProxy;
       const pages = pdf.numPages;
+      totalPagesRef.current = pages;
       setTotalPages(pages);
 
-      if (loadSource === 'network') {
+      // Measure first page so scroll-mode placeholders have correct dimensions
+      try {
+        const first = await (pdf as unknown as PDFDocumentProxy).getPage(1);
+        const vp = first.getViewport({ scale: scaleRef.current });
+        setPageSize({ w: Math.round(vp.width), h: Math.round(vp.height) });
+      } catch { /* keep defaults */ }
+
+      if (source === 'network') {
         cachePDF(book.id, data, pages).catch(() => {});
         if (!book.total_pages || book.total_pages !== pages) {
           fetch(`/api/books/${book.id}`, {
@@ -153,7 +171,6 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
           }).catch(() => {});
         }
       }
-
       setLoading(false);
       await renderSinglePage(book.current_page ?? 1, scaleRef.current);
     } catch (e) {
@@ -169,18 +186,14 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
       setPageLoading(true);
       renderTask.current?.cancel();
       renderTask.current = null;
-
       const page = await pdfRef.current.getPage(pageNum);
       const vp   = page.getViewport({ scale: s });
       const canvas = canvasRef.current;
-      canvas.height = vp.height;
       canvas.width  = vp.width;
-
+      canvas.height = vp.height;
       const task = page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp });
       renderTask.current = task;
       await task.promise;
-
-      // Re-render finished — remove the CSS scale, the canvas is now at correct resolution
       lastRenderScale.current = s;
       setCssScale(1);
       setPageLoading(false);
@@ -190,87 +203,83 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
   }
 
   useEffect(() => {
-    if (viewMode === 'page' && pdfRef.current && !loading) {
-      renderSinglePage(currentPage, scale);
-    }
+    if (viewMode === 'page' && pdfRef.current && !loading) renderSinglePage(currentPage, scale);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, scale, viewMode]);
 
-  // ── Scroll-mode: re-render visible pages when scale changes ──────────────────
-  useEffect(() => {
-    if (viewMode !== 'scroll' || loading) return;
-    const jobs = Array.from(visiblePages.current).map((pageNum) => {
-      const canvas = pageCanvasRefs.current[pageNum - 1];
-      if (!canvas) return Promise.resolve();
-      renderedAt.current.set(pageNum, scale);
-      return renderScrollPage(pageNum, canvas, scale);
-    });
-    // Once all visible pages are re-drawn at the new scale, drop the CSS scale
-    Promise.all(jobs).then(() => {
-      lastRenderScale.current = scale;
-      setCssScale(1);
-    });
-  }, [scale]);
-
-  // ── Scroll-mode: IntersectionObserver ────────────────────────────────────────
+  // ── Scroll-mode: initial render when entering scroll ─────────────────────────
   useEffect(() => {
     if (viewMode !== 'scroll' || !pdfRef.current || totalPages === 0 || loading) return;
+    renderedAt.current.clear();
+    // rAF ensures canvas ref callbacks have fired before we try to render
+    const raf = requestAnimationFrame(() => {
+      renderScrollWindow(currentPageRef.current, scaleRef.current);
+      pageCanvasRefs.current[currentPageRef.current - 1]?.scrollIntoView({ block: 'start' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [viewMode, totalPages, loading, renderScrollWindow]);
 
-    observerRef.current?.disconnect();
-    visiblePages.current.clear();
-    pageCanvasRefs.current = new Array(totalPages).fill(null);
+  // ── Scroll-mode: re-render window on scale change ────────────────────────────
+  useEffect(() => {
+    if (viewMode !== 'scroll' || loading || totalPages === 0) return;
+    const center = currentPageRef.current;
+    const s = scale;
+    const start = Math.max(1, center - SCROLL_WINDOW);
+    const end   = Math.min(totalPages, center + SCROLL_WINDOW);
+    const jobs: Promise<void>[] = [];
+    for (let i = start; i <= end; i++) {
+      const canvas = pageCanvasRefs.current[i - 1];
+      if (!canvas) continue;
+      renderedAt.current.set(i, s);
+      jobs.push(renderScrollPage(i, canvas, s));
+    }
+    Promise.all(jobs).then(() => { lastRenderScale.current = s; setCssScale(1); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale, renderScrollPage]);
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const canvas  = entry.target as HTMLCanvasElement;
-          const pageNum = parseInt(canvas.dataset.page!, 10);
-          if (entry.isIntersecting) {
-            visiblePages.current.add(pageNum);
-            setCurrentPage(pageNum);
-            if (renderedAt.current.get(pageNum) !== scaleRef.current) {
-              renderedAt.current.set(pageNum, scaleRef.current);
-              renderScrollPage(pageNum, canvas, scaleRef.current);
-            }
-          } else {
-            visiblePages.current.delete(pageNum);
-          }
-        });
-      },
-      { rootMargin: '400px 0px', threshold: 0 }
-    );
+  // ── Scroll-mode: track current page and load more pages on scroll ─────────────
+  useEffect(() => {
+    if (viewMode !== 'scroll' || loading || totalPages === 0) return;
+    const el = scrollAreaRef.current;
+    if (!el) return;
 
-    const id = setTimeout(() => {
-      pageCanvasRefs.current.forEach((c) => {
-        if (c) observerRef.current!.observe(c);
+    function getMostVisiblePage(): number {
+      const elRect = el!.getBoundingClientRect();
+      let best = currentPageRef.current, bestOverlap = -Infinity;
+      pageCanvasRefs.current.forEach((canvas, i) => {
+        if (!canvas) return;
+        const r = canvas.getBoundingClientRect();
+        const overlap = Math.min(r.bottom, elRect.bottom) - Math.max(r.top, elRect.top);
+        if (overlap > bestOverlap) { bestOverlap = overlap; best = i + 1; }
       });
-    }, 50);
+      return best;
+    }
 
+    function onScroll() {
+      const page = getMostVisiblePage();
+      setCurrentPage(page);
+      renderScrollWindow(page, scaleRef.current);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => saveProgress(page), 800);
+    }
+
+    el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
-      clearTimeout(id);
-      observerRef.current?.disconnect();
+      el.removeEventListener('scroll', onScroll);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [viewMode, totalPages, loading]);
-
-  async function renderScrollPage(pageNum: number, canvas: HTMLCanvasElement, s: number) {
-    if (!pdfRef.current) return;
-    try {
-      const page = await pdfRef.current.getPage(pageNum);
-      const vp   = page.getViewport({ scale: s });
-      canvas.height = vp.height;
-      canvas.width  = vp.width;
-      await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;
-    } catch { /* ignore cancelled */ }
-  }
+  }, [viewMode, loading, totalPages, renderScrollWindow]);
 
   // ── Navigation ────────────────────────────────────────────────────────────────
   const goToPage = useCallback(async (page: number) => {
-    const p = Math.max(1, Math.min(page, totalPages));
+    const p = Math.max(1, Math.min(page, totalPagesRef.current));
     setCurrentPage(p);
     await saveProgress(p);
     if (viewModeRef.current === 'scroll') {
       pageCanvasRefs.current[p - 1]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [totalPages]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function saveProgress(page: number) {
     await enqueueProgressUpdate(book.id, page);
@@ -304,7 +313,6 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
     return () => document.removeEventListener('fullscreenchange', h);
   }, []);
 
-  // ── View-mode switch ──────────────────────────────────────────────────────────
   function handleViewModeChange(mode: ViewMode) {
     renderedAt.current.clear();
     setViewMode(mode);
@@ -323,11 +331,11 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
   return (
     <div
       ref={containerRef}
-      className="min-h-dvh bg-[#1a1a1a] flex flex-col"
+      className="h-dvh bg-[#1a1a1a] flex flex-col"
       style={{ touchAction: 'pan-y' }}
     >
       {/* Top bar */}
-      <div className="sticky top-0 z-30 bg-bg-primary/95 backdrop-blur border-b border-border px-4 h-12 flex items-center justify-between gap-4">
+      <div className="sticky top-0 z-30 bg-bg-primary/95 backdrop-blur border-b border-border px-4 h-12 flex items-center justify-between gap-4 flex-shrink-0">
         <button
           onClick={onBack}
           className="text-text-muted hover:text-text-primary transition-colors text-sm font-mono flex items-center gap-1.5 flex-shrink-0"
@@ -345,7 +353,10 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
       </div>
 
       {/* Canvas area */}
-      <div className="flex-1 overflow-auto flex justify-center py-6 px-4">
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 min-h-0 overflow-auto flex justify-center py-6 px-4"
+      >
         {loading ? (
           <div className="flex flex-col items-center justify-center gap-3 text-text-muted">
             <div className="w-6 h-6 border-2 border-border border-t-accent-gold rounded-full animate-spin-slow" />
@@ -359,8 +370,6 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
               ref={canvasRef}
               className="shadow-modal rounded"
               style={{
-                // CSS scale gives instant visual feedback while the re-render is in flight.
-                // cssScale resets to 1 inside renderSinglePage once drawing completes.
                 transform: cssScale !== 1 ? `scale(${cssScale})` : undefined,
                 transformOrigin: 'top center',
                 opacity: pageLoading && cssScale === 1 ? 0.5 : 1,
@@ -381,8 +390,10 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
                 key={n}
                 data-page={n}
                 ref={(el) => { pageCanvasRefs.current[n - 1] = el; }}
-                className="shadow-modal rounded max-w-full"
-                style={{ minHeight: '2px' }}
+                className="shadow-modal rounded"
+                width={pageSize.w}
+                height={pageSize.h}
+                style={{ maxWidth: '100%', display: 'block' }}
               />
             ))}
           </div>
@@ -398,12 +409,7 @@ export default function PDFViewer({ book, onBack }: { book: Book; onBack: () => 
           viewMode={viewMode}
           isFullscreen={isFullscreen}
           onPageChange={goToPage}
-          onScaleChange={(s) => {
-            // Zoom buttons: immediate re-render (discrete step, not a gesture stream)
-            lastRenderScale.current = s;
-            setCssScale(1);
-            setScale(s);
-          }}
+          onScaleChange={(s) => { lastRenderScale.current = s; setCssScale(1); setScale(s); }}
           onViewModeChange={handleViewModeChange}
           onFullscreenToggle={toggleFullscreen}
         />

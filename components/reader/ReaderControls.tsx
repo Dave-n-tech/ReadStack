@@ -61,13 +61,13 @@ export default function ReaderControls({
         />
       </div>
 
-      <div className="h-12 px-4 flex items-center justify-between gap-2 max-w-3xl mx-auto">
+      <div className="h-12 px-3 sm:px-4 flex items-center justify-between gap-1.5 sm:gap-2">
         {/* Prev (page mode only) */}
         {viewMode === 'page' && (
           <button
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage <= 1}
-            className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             aria-label="Previous page"
           >
             ‹
@@ -75,7 +75,7 @@ export default function ReaderControls({
         )}
 
         {/* Page indicator */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {editing ? (
             <input
               autoFocus
@@ -86,12 +86,12 @@ export default function ReaderControls({
                 if (e.key === 'Enter') handlePageSubmit();
                 if (e.key === 'Escape') { setEditing(false); setPageInput(''); }
               }}
-              className="w-14 text-center input py-0.5 text-sm font-mono"
+              className="w-12 text-center input py-0.5 text-sm font-mono"
             />
           ) : (
             <button
               onClick={() => { setEditing(true); setPageInput(String(currentPage)); }}
-              className="font-mono text-sm text-text-secondary hover:text-text-primary transition-colors px-1"
+              className="font-mono text-sm text-text-secondary hover:text-text-primary transition-colors px-1 min-w-[1.5rem] text-center"
             >
               {currentPage}
             </button>
@@ -104,7 +104,7 @@ export default function ReaderControls({
           <button
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage >= totalPages}
-            className="w-8 h-8 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-bg-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             aria-label="Next page"
           >
             ›
@@ -115,31 +115,31 @@ export default function ReaderControls({
         <div className="flex-1" />
 
         {/* Zoom */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
           <button
             onClick={zoomOut}
             disabled={scale <= ZOOM_LEVELS[0]}
-            className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded disabled:opacity-30 transition-colors text-base"
+            className="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded disabled:opacity-30 transition-colors text-base"
           >
             −
           </button>
-          <span className="font-mono text-xs text-text-muted w-10 text-center">
+          <span className="hidden sm:inline font-mono text-xs text-text-muted w-10 text-center">
             {Math.round(scale * 100)}%
           </span>
           <button
             onClick={zoomIn}
             disabled={scale >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-            className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded disabled:opacity-30 transition-colors"
+            className="w-9 h-9 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded disabled:opacity-30 transition-colors"
           >
             +
           </button>
         </div>
 
         {/* View mode toggle */}
-        <div className="flex items-center rounded-lg border border-border overflow-hidden">
+        <div className="flex items-center rounded-lg border border-border overflow-hidden flex-shrink-0">
           <button
             onClick={() => onViewModeChange('page')}
-            className={`px-2.5 py-1 text-xs font-mono transition-colors ${
+            className={`px-3 py-2 text-xs font-mono transition-colors ${
               viewMode === 'page'
                 ? 'bg-accent-gold text-bg-primary'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
@@ -150,7 +150,7 @@ export default function ReaderControls({
           </button>
           <button
             onClick={() => onViewModeChange('scroll')}
-            className={`px-2.5 py-1 text-xs font-mono transition-colors ${
+            className={`px-3 py-2 text-xs font-mono transition-colors ${
               viewMode === 'scroll'
                 ? 'bg-accent-gold text-bg-primary'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
@@ -161,10 +161,10 @@ export default function ReaderControls({
           </button>
         </div>
 
-        {/* Fullscreen */}
+        {/* Fullscreen — hidden on mobile where it's handled by the OS */}
         <button
           onClick={onFullscreenToggle}
-          className="w-7 h-7 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded transition-colors"
+          className="hidden sm:flex w-9 h-9 items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded transition-colors flex-shrink-0"
           title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
         >
           {isFullscreen ? '⊠' : '⊞'}

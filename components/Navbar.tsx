@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
@@ -9,45 +9,12 @@ import type { User } from '@supabase/supabase-js';
 
 export default function Navbar({ user }: { user: User }) {
   const [signingOut, setSigningOut] = useState(false);
-  const [visible, setVisible] = useState(true);
   const supabase = createClient();
   const router = useRouter();
   const pathname = usePathname();
   const isOnline = useOnlineStatus();
-  const isReader = pathname?.startsWith('/reader/');
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (!isReader) {
-      setVisible(true);
-      return;
-    }
-
-    // Auto-hide after 3s of inactivity in the reader
-    const scheduleHide = () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-      hideTimer.current = setTimeout(() => setVisible(false), 3000);
-    };
-
-    scheduleHide();
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (e.clientY < 72) {
-        // Cursor near top — reveal
-        setVisible(true);
-        if (hideTimer.current) clearTimeout(hideTimer.current);
-      } else {
-        // Cursor moved away — start hide timer if not already running
-        scheduleHide();
-      }
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
-  }, [isReader]);
+  if (pathname?.startsWith('/reader/')) return null;
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -59,12 +26,8 @@ export default function Navbar({ user }: { user: User }) {
   const name = (user?.user_metadata?.full_name ?? user?.email) as string | undefined;
 
   return (
-    <header
-      className={`sticky top-0 z-40 border-b border-border bg-bg-primary/90 backdrop-blur-sm transition-transform duration-300 ${
-        isReader && !visible ? '-translate-y-full' : 'translate-y-0'
-      }`}
-    >
-      <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+    <header className="sticky top-0 z-40 border-b border-border bg-bg-primary/90 backdrop-blur-sm">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
         <Link href="/library" className="font-display text-xl font-bold text-text-primary tracking-tight">
           Read<span className="text-accent-gold">Stack</span>
         </Link>

@@ -9,7 +9,25 @@ import AddBookModal from '@/components/library/AddBookModal';
 import Spinner from '@/components/ui/Spinner';
 import type { Category } from '@/types';
 
-// ─── Collection tab with rename + delete context menu ────────────────────────
+function PencilIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3,6 5,6 21,6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  );
+}
+
+// ─── Collection tab ───────────────────────────────────────────────────────────
 function CollectionTab({
   category,
   count,
@@ -25,7 +43,6 @@ function CollectionTab({
   onRename: (name: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameInput, setNameInput] = useState(category.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -41,14 +58,18 @@ function CollectionTab({
   }
 
   return (
-    <div className="relative flex-shrink-0">
-      {/* Tab button */}
+    <div
+      className={`flex items-center border-b-2 flex-shrink-0 transition-colors ${
+        active ? 'border-accent-gold' : 'border-transparent'
+      }`}
+    >
+      {/* Main tab button */}
       <button
         onClick={onSelect}
-        className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+        className={`flex items-center gap-2 pl-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
           active
-            ? 'border-accent-gold text-text-primary'
-            : 'border-transparent text-text-muted hover:text-text-secondary hover:border-border-light'
+            ? 'text-text-primary pr-1.5'
+            : 'text-text-muted hover:text-text-secondary pr-4'
         }`}
       >
         <span
@@ -65,8 +86,7 @@ function CollectionTab({
               if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
               if (e.key === 'Escape') { setRenaming(false); setNameInput(category.name); }
             }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-transparent border-b border-accent-gold outline-none w-28 text-text-primary"
+            className="bg-transparent border-b border-accent-gold outline-none w-24 text-text-primary"
           />
         ) : (
           <span>{category.name}</span>
@@ -76,35 +96,24 @@ function CollectionTab({
         </span>
       </button>
 
-      {/* Context menu trigger */}
-      <button
-        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
-        className={`absolute top-2 right-0 w-5 h-5 rounded flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors text-xs ${
-          menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-        }`}
-        style={{ opacity: menuOpen ? 1 : undefined }}
-      >
-        ⋯
-      </button>
-
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div className="absolute left-0 top-full mt-1 z-20 bg-bg-elevated border border-border rounded-lg shadow-modal py-1 min-w-[140px] animate-fade-in">
-            <button
-              onClick={() => { setRenaming(true); setMenuOpen(false); }}
-              className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-card transition-colors"
-            >
-              Rename
-            </button>
-            <button
-              onClick={async () => { setMenuOpen(false); await onDelete(); }}
-              className="w-full text-left px-4 py-2 text-sm text-accent-red hover:bg-accent-red-muted transition-colors"
-            >
-              Delete collection
-            </button>
-          </div>
-        </>
+      {/* Edit / delete — only when this tab is active */}
+      {active && !renaming && (
+        <div className="flex items-center gap-0.5 pr-3">
+          <button
+            onClick={() => { setNameInput(category.name); setRenaming(true); }}
+            className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
+            title="Rename"
+          >
+            <PencilIcon />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1 rounded text-text-muted hover:text-accent-red hover:bg-accent-red-muted transition-colors"
+            title="Delete collection"
+          >
+            <TrashIcon />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -115,44 +124,46 @@ export default function LibraryPage() {
   const { categories, loading: catsLoading, createCategory, updateCategory, deleteCategory } = useCategories();
   const { books, loading: booksLoading, createBook, deleteBook } = useBooks();
 
-  const [activeTab, setActiveTab]           = useState<string | null>(null); // null = All
+  const [activeTab, setActiveTab]                   = useState<string | null>(null);
   const [showCreateCategory, setShowCreateCategory] = useState(false);
-  const [showAddBook, setShowAddBook]       = useState(false);
+  const [showAddBook, setShowAddBook]               = useState(false);
 
-  const loading = catsLoading || booksLoading;
-  const uncategorized = books.filter((b) => !b.category_id);
+  const loading        = catsLoading || booksLoading;
+  const uncategorized  = books.filter((b) => !b.category_id);
+  const activeCategory = categories.find((c) => c.id === activeTab) ?? null;
+  const defaultCategory = activeTab && activeTab !== '__uncategorized' ? activeTab : null;
 
-  // If the active collection tab gets deleted, fall back to All
+  const filteredBooks = (() => {
+    if (activeTab === null)              return books;
+    if (activeTab === '__uncategorized') return uncategorized;
+    return books.filter((b) => b.category_id === activeTab);
+  })();
+
+  // Fall back to All if the active collection is deleted
   useEffect(() => {
     if (activeTab && activeTab !== '__uncategorized' && !categories.find((c) => c.id === activeTab)) {
       setActiveTab(null);
     }
   }, [categories, activeTab]);
 
-  const filteredBooks = (() => {
-    if (activeTab === null) return books;
-    if (activeTab === '__uncategorized') return uncategorized;
-    return books.filter((b) => b.category_id === activeTab);
-  })();
-
-  // Pre-select the active collection when opening Add Book
-  const defaultCategory = activeTab && activeTab !== '__uncategorized' ? activeTab : null;
-
-  const activeCategory = categories.find((c) => c.id === activeTab) ?? null;
+  async function handleDeleteCollection(category: Category) {
+    if (!confirm(`Delete "${category.name}"? Books inside will become uncategorized.`)) return;
+    await deleteCategory(category.id);
+  }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 pt-10">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10">
       {/* Header */}
-      <div className="flex items-end justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-display text-3xl font-bold text-text-primary tracking-tight">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
             Your Library
           </h1>
           <p className="text-text-muted text-sm font-mono mt-1">
             {books.length} book{books.length !== 1 ? 's' : ''} &middot; {categories.length} collection{categories.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           <button onClick={() => setShowCreateCategory(true)} className="btn-ghost text-xs">
             + New Collection
           </button>
@@ -163,7 +174,7 @@ export default function LibraryPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex items-stretch border-b border-border overflow-x-auto mb-8 gap-0 group">
+      <div className="flex items-stretch border-b border-border overflow-x-auto mb-8 gap-0">
         {/* All */}
         <button
           onClick={() => setActiveTab(null)}
@@ -186,11 +197,11 @@ export default function LibraryPage() {
             active={activeTab === cat.id}
             onSelect={() => setActiveTab(cat.id)}
             onRename={async (name) => { await updateCategory(cat.id, { name }); }}
-            onDelete={async () => { await deleteCategory(cat.id); }}
+            onDelete={async () => { await handleDeleteCollection(cat); }}
           />
         ))}
 
-        {/* Uncategorized (only shown if there are books without a category) */}
+        {/* Uncategorized */}
         {!loading && uncategorized.length > 0 && (
           <button
             onClick={() => setActiveTab('__uncategorized')}
@@ -256,7 +267,7 @@ export default function LibraryPage() {
           onCreate={async (data) => {
             const created = await createCategory(data);
             setShowCreateCategory(false);
-            setActiveTab(created.id); // switch to the new collection
+            setActiveTab(created.id);
           }}
         />
       )}
